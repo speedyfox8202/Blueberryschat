@@ -4,9 +4,9 @@
 //    and Realtime Database. Keep this file's values public; security rules
 //    (provided separately) protect your data.
 export const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  appId: "PASTE_YOUR_APP_ID"
+  apiKey: "AIzaSyB4LMi5nHQacvpQnxH5bMttS-ddRIHBghY",
+  authDomain: "blueberryschat.firebaseapp.com",
+  projectId: "blueberryschat",
+  databaseURL: "https://blueberryschat-default-rtdb.firebaseio.com",
+  appId: "1:1060181691988:web:97de8186a8b0ef4241e7c1"
 };
