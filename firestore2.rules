@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.uid in [
+        "Vmqgoi0Yr2Y2v5kGL42ZXRONfnb2",
+        "Q45h3qgZKLPR0dH6p6fybTxSFU32"
+      ];
+    }
+    function isConsole() { return signedIn() && request.auth.uid == "Vmqgoi0Yr2Y2v5kGL42ZXRONfnb2"; }
+    function isAdminUid(uid) {
+      return uid in ["Vmqgoi0Yr2Y2v5kGL42ZXRONfnb2", "Q45h3qgZKLPR0dH6p6fybTxSFU32"];
+    }
+    function activeUser() {
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.banned != true;
+    }
+    function chatMember(chatId) {
+      return activeUser() && request.auth.uid in
+        get(/databases/$(database)/documents/chats/$(chatId)).data.members;
+    }
+
+    match /users/{uid} {
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 24
+        && request.resource.data.usernameLower is string
+        && !(request.resource.data.usernameLower in ['owner','console'])
+        && !request.resource.data.keys().hasAny(['banned','banReason','bannedAt','bannedBy']);
+      allow read: if (signedIn() && request.auth.uid == uid) || activeUser();
+      allow update: if (
+        activeUser() && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.usernameLower == resource.data.usernameLower
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['contacts'])
+      ) || (
+        isAdmin() && !isAdminUid(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['banned','banReason','bannedAt','bannedBy'])
+        && request.resource.data.banned == true
+        && request.resource.data.bannedBy == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    match /chats/{chatId} {
+      allow read: if (activeUser() && request.auth.uid in resource.data.members) || isAdmin();
+      allow create: if activeUser()
+        && request.auth.uid in request.resource.data.members
+        && request.resource.data.members.size() >= 2
+        && request.resource.data.members.size() <= 20
+        && request.resource.data.type in ['direct','group'];
+      allow update: if activeUser()
+        && request.auth.uid in resource.data.members
+        && request.resource.data.members.size() <= 20
+        && (
+          (request.resource.data.members == resource.data.members
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt','lastMessage','memberNames']))
+          ||
+          (resource.data.type == 'group' && resource.data.ownerId == request.auth.uid
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members','memberNames','updatedAt']))
+          ||
+          (resource.data.type == 'group'
+           && request.resource.data.members == resource.data.members.removeAll([request.auth.uid])
+           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']))
+        );
+      allow delete: if isConsole();
+
+      match /messages/{messageId} {
+        allow read: if chatMember(chatId) || isConsole();
+        allow create: if chatMember(chatId)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 4000;
+        allow delete: if isConsole();
+        allow update: if false;
+      }
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update: if activeUser() && !isAdmin()
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.targetUid is string
+        && request.resource.data.targetUid != request.auth.uid
+        && !isAdminUid(request.resource.data.targetUid)
+        && reportId == request.auth.uid + "_" + request.resource.data.targetUid
+        && request.resource.data.status == 'open'
+        && request.resource.data.createdAt == request.time
+        && (
+          !exists(/databases/$(database)/documents/reports/$(reportId))
+          || get(/databases/$(database)/documents/reports/$(reportId)).data.createdAt <= request.time - duration.value(24, 'h')
+        );
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','reviewedBy','reviewedAt'])
+        && request.resource.data.reviewedBy == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if activeUser();
+      allow create: if isConsole()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 70
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 700
+        && request.resource.data.createdAt == request.time;
+      allow update, delete: if isConsole();
+    }
+  }
+}
